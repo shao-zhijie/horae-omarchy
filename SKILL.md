@@ -10,7 +10,7 @@ description: 在 Omarchy（Arch Linux + Hyprland + Quickshell）系统上安装�
 通过本方案，用户无需频繁打开终端：
 - 按下快捷键即可弹出居中浮动小窗，秒级记录闪念待办（**闪念录入模式**）；
 - 按下快捷键随时平滑聚焦或唤起完整的 GTD 终端界面（**一般交互模式**）；
-- 按下快捷键直接将当前复制的文字记录入收件箱并弹窗提醒（**剪贴板录入模式**）；
+- 鼠标划选内容后按快捷键，自动完成复制并录入收件箱，伴随弹窗提醒（**划选与剪贴板录入模式**）；
 - 顶部状态栏常驻番茄钟倒计时环与到期任务卡片，带隐私防窥与悬停跑马灯；
 - Shell 中敲击 `hc`（捕获）或 `hcc`（剪贴板捕获）即可极速操作。
 
@@ -66,9 +66,9 @@ bash <skill-dir>/scripts/preflight.sh
    - 快捷键：`SUPER + SHIFT + I`
    - 触发动作：`{ tui = "horae-normal", focus = true }`
    - 窗口规则：`org.omarchy.horae` 居中浮动（占屏幕 75% 面积），提供完整的 GTD 交互、周回顾与看板。
-3. **剪贴板录入模式（Clip Capture）**：
+3. **划选与剪贴板录入模式（Clip Capture）**：
    - 快捷键：`CTRL + 1`
-   - 触发动作：执行 `~/.local/bin/horae-clip`，将剪贴板内容写入收件箱，并通过 `notify-send` 弹出桌面气泡确认。
+   - 触发动作：执行 `~/.local/bin/horae-clip`，优先自动复制鼠标划选文本（或系统剪贴板内容）并写入收件箱，通过 `notify-send` 弹出桌面气泡确认。
 
 配置写入后自动调用 `hyprctl reload` 使其立即生效。详细规则与自定义改键参考 [references/hyprland-bindings.md](references/hyprland-bindings.md)。
 
@@ -116,7 +116,7 @@ bash <skill-dir>/scripts/setup-omarchy.sh --install-npm --all
 
 配置完成后，按以下步骤进行冒烟验证：
 1. **测试闪念录入**：按键盘 `SUPER + I`，观察是否瞬间弹出一个紧凑的 Horae 终端录入框；输入 `体验 Horae 闪念录入 @test` 并回车，窗口应自动关闭；
-2. **测试剪贴板录入**：用鼠标复制一段文字，按键盘 `CTRL + 1`，观察右上方是否弹出 `Horae 剪贴板捕获` 桌面通知；
+2. **测试划选/剪贴板录入**：用鼠标划选一段文字（无需手动按 Ctrl+C），按键盘 `CTRL + 1`，观察右上方是否弹出 `Horae 剪贴板捕获` 桌面通知，并检查收件箱；
 3. **测试应用交互**：按键盘 `SUPER + SHIFT + I`，观察是否呼出/聚焦到 Horae 主界面，检查刚才捕获的任务是否已在收件箱；
 4. **测试状态栏**：查看顶部状态栏居中位置，是否有 Horae 番茄钟环和待办提示，鼠标悬停测试隐私模式与卡片展开。
 

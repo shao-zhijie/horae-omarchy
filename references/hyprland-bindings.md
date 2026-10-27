@@ -10,7 +10,7 @@ Horae 与 Omarchy 系统结合时，推荐配置三组核心交互方式：
 |---|---|---|---|
 | `SUPER + I` | 闪念录入模式 (Flash) | `{ tui = "horae-flash", focus = true }` | 居中浮动小窗，快速输入标题/标签/周期，回车后瞬间保存入库并秒级关闭，零上下文干扰 |
 | `SUPER + SHIFT + I` | 应用一般模式 (Normal) | `{ tui = "horae-normal", focus = true }` | 呼出或聚焦（已打开时自动切到前台）完整的 GTD 交互视图 |
-| `CTRL + 1` | 剪贴板快速捕获 (Clip) | `~/.local/bin/horae-clip` | 静默捕获系统剪贴板（或选中文本）至收件箱，并弹出 `notify-send` 确认提示 |
+| `CTRL + 1` | 剪贴板快速捕获 (Clip) | `~/.local/bin/horae-clip` | 自动复制鼠标划选内容（或剪贴板文本）至收件箱，并弹出 `notify-send` 确认提示 |
 | `SUPER + ALT + V` | （可选）语音录入待办 | `~/.local/bin/horae-voice` | 调用 Omarchy 内置的 Voxtype 离线 Whisper 模型，自然语言抽取时间与优先级 |
 
 ## 2. bindings.lua 配置示例
@@ -64,4 +64,4 @@ o.window("^(org\\.omarchy\\.horae|org\\.omarchy\\.horae-normal)$", {
 `~/.local/bin/` 目录下的辅助脚本封装了 `HORAE_BIN` 探测与终端隔离启动：
 - `horae-flash`：`exec "$HORAE_BIN" -f "$@"`
 - `horae-normal`：`exec "$HORAE_BIN" -n "$@"`
-- `horae-clip`：`horae capture --clip "$@"` 并处理返回信息通过 `notify-send` 桌面通知。
+- `horae-clip`：优先将鼠标划选的文本（Wayland Primary Selection）复制至主剪贴板，随后执行 `horae capture --clip "$@"` 并通过 `notify-send` 桌面通知显示结果。

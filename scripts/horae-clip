@@ -1,6 +1,39 @@
 #!/usr/bin/env bash
 set -eo pipefail
-# Capture current clipboard content into Horae inbox and notify user
+
+# 1. 先将预先选好的内容复制到系统剪贴板 (Wayland primary selection -> clipboard)
+# 在 Linux / Wayland (Hyprland) 环境下，鼠标选中的文本自动进入 primary selection
+primary=$(wl-paste --primary --no-newline 2>/dev/null || true)
+
+if [ -n "$primary" ]; then
+    printf "%s" "$primary" | wl-copy
+else
+    # 若 primary 为空，对于非终端窗口尝试通过 wtype 发送 Ctrl+C 作为保底（避免终端收到 SIGINT）
+    active_class=$(hyprctl activewindow -j 2>/dev/null | grep -o '"class": "[^"]*"' | cut -d'"' -f4 || true)
+    case "$active_class" in
+        kitty|alacritty|foot|ghostty|org.wezfurlong.wezterm)
+            ;;
+        *)
+            if command -v wtype >/dev/null 2>&1; then
+                wtype -M ctrl -k c -m ctrl 2>/dev/null || true
+                sleep 0.05
+            fi
+            ;;
+    esac
+fi
+
+# 检查当前剪贴板是否有内容
+clip_content=$(wl-paste --no-newline 2>/dev/null || true)
+if [ -z "$clip_content" ]; then
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -a "Horae" -u low -i dialog-information "Horae 提示" "未检测到选中文本且剪贴板为空"
+    else
+        echo "未检测到选中文本且剪贴板为空" >&2
+    fi
+    exit 0
+fi
+
+# 2. 执行 horae capture --clip 并发送桌面通知
 HORAE_BIN="${HORAE_BIN:-$(command -v horae || echo "$HOME/.cargo/bin/horae")}"
 
 if msg=$("$HORAE_BIN" capture --clip "$@" 2>&1); then
