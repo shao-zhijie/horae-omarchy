@@ -7,6 +7,9 @@ description: 在 Omarchy（Arch Linux + Hyprland + Quickshell）系统上安装�
 
 本技能旨在为 **Omarchy**（基于 Arch Linux + Hyprland + Quickshell 的美观、智能、无缝桌面环境）用户提供从安装到全套桌面集成的最丝滑方案。
 
+> [!NOTE]
+> **全局 Agent 技能规范**：本 Skill 遵循开放 Agent Skills 规范，设计置于系统全局技能目录 `~/.agents/skills/horae-omarchy`（或 `~/.agent/skills/horae-omarchy`）。安装在该目录后，系统内任意支持 Agent 规范的 AI 工具（Antigravity、Claude Code、Codex 等）均可原生自动发现并载入，无需为特定 Agent 编写专属脚本。`<skill-dir>` 路径通常对应 `~/.agents/skills/horae-omarchy`。
+
 通过本方案，用户无需频繁打开终端：
 - 按下快捷键即可弹出居中浮动小窗，秒级记录闪念待办（**闪念录入模式**）；
 - 按下快捷键随时平滑聚焦或唤起完整的 GTD 终端界面（**一般交互模式**）；

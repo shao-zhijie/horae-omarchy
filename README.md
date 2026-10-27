@@ -42,29 +42,51 @@
 
 ## 🚀 安装与使用
 
-### 方式 1：作为 AI Skill 使用（推荐）
+### 方式 1：作为全局通用 Agent Skill 安装使用（推荐）
 
-本仓库遵循标准 Agent Skill 规范，可供 **Google Antigravity**、**Gemini CLI**、**Claude Code** 等 AI 助手直接调用。
+本仓库完全遵循开放 **Agent Skills 规范**。放入系统全局 Agent 技能目录后，系统内的**所有 AI 助手**（如 Google Antigravity、Claude Code、Codex、Gemini CLI、Orca、Omarchy 内置 Agent 等）均可**自动原生发现并直接调用**，无需针对某个特定 Agent 单独编写适配脚本或配置。
 
-1. **克隆本仓库**：
-   ```bash
-   git clone https://github.com/zhaohang1205/horae-omarchy.git ~/Projects/horae-omarchy
-   ```
+#### 安装方式（二选一）：
 
-2. **全局链接 Skill**：
-   - **Antigravity / Gemini CLI**：
-     ```bash
-     mkdir -p ~/.gemini/config/skills
-     ln -sfn ~/Projects/horae-omarchy ~/.gemini/config/skills/horae-omarchy
-     ```
-   - **Claude Code**：
-     ```bash
-     mkdir -p ~/.claude/skills
-     ln -sfn ~/Projects/horae-omarchy ~/.claude/skills/horae-omarchy
-     ```
+**选项 A：直接安装到系统全局 Agent 技能目录（推荐）**
+```bash
+# 确保全局 skills 目录存在
+mkdir -p ~/.agents/skills
 
-3. **对 AI 助手说**：
-   > “帮我在 Omarchy 系统上配置 Horae” 或 “检测我的 Horae 和 Omarchy 快捷键状态”
+# 克隆至全局目录
+git clone https://github.com/zhaohang1205/horae-omarchy.git ~/.agents/skills/horae-omarchy
+
+# （可选）若希望兼顾单数路径习惯，可建立 ~/.agent 别名
+ln -sfn ~/.agents ~/.agent
+```
+
+**选项 B：克隆至开发目录后软链接（方便参与开发与 git 同步）**
+```bash
+# 克隆到您的项目目录
+git clone https://github.com/zhaohang1205/horae-omarchy.git ~/Projects/horae-omarchy
+
+# 全局软链接到 Agent skills 目录
+mkdir -p ~/.agents/skills
+ln -sfn ~/Projects/horae-omarchy ~/.agents/skills/horae-omarchy
+
+# （可选）别名软链接
+ln -sfn ~/.agents ~/.agent
+```
+
+> 💡 **提示**：若您使用了 [skills.sh](https://skills.sh/) 技能包管理器，也可直接执行：
+> ```bash
+> npx skills add zhaohang1205/horae-omarchy -g
+> ```
+
+#### 使用方式：
+
+安装完成后，打开您常用的任意 AI 助手（无论 Antigravity、Claude Code、Codex 还是终端 CLI），无需任何额外配置，直接对话即可：
+
+> **常用指令示例**：
+> - *“帮我在 Omarchy 系统上配置 Horae GTD 环境”*
+> - *“体检一下当前系统的 Horae 和 Omarchy 快捷键状态”*
+> - *“帮我配置 Horae 顶部状态栏番茄钟”*
+> - *“开启用鼠标划选文字后按 Ctrl+1 自动复制并捕获待办的功能”*
 
 ---
 
