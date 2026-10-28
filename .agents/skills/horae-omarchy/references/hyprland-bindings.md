@@ -13,6 +13,8 @@ Horae 与 Omarchy 系统结合时，推荐配置三组核心交互方式：
 | `CTRL + 1` | 剪贴板快速捕获 (Clip) | `~/.local/bin/horae-clip` | 自动复制鼠标划选内容（或剪贴板文本）至收件箱，并弹出 `notify-send` 确认提示 |
 | `SUPER + ALT + V` | （可选）语音录入待办 | `~/.local/bin/horae-voice` | 调用 Omarchy 内置的 Voxtype 离线 Whisper 模型，自然语言抽取时间与优先级 |
 
+> 上表为首选键位。在原生 Omarchy 上 `SUPER + I` 与 `SUPER + SHIFT + I` 默认被输入法切换占用，实际落地键位以脚本运行结束时的报告为准（见下方「快捷键冲突排查」）。
+
 ## 2. bindings.lua 配置示例
 
 在 `~/.config/hypr/bindings.lua` 中追加：
@@ -33,11 +35,27 @@ o.bind("CTRL + 1", "Horae clip capture", os.getenv("HOME") .. "/.local/bin/horae
 ```
 
 ### 快捷键冲突排查
+
 在添加快捷键前，可运行以下命令检查是否有按键冲突：
 ```bash
 omarchy menu keybindings --print | grep "SUPER + I"
 ```
-若发现冲突，可选择使用 `o.rebind(...)` 替代原有绑定，或改为用户偏好的其他键位（如 `SUPER + ALT + C`）。
+
+> [!IMPORTANT]
+> `omarchy menu keybindings --print` 需要运行中的 Hyprland 会话。`setup-omarchy.sh` 不依赖它：会同时扫描 `~/.config/hypr/*.lua` 与 `$OMARCHY_PATH/default/hypr/**/*.lua`（剥离 `--` 注释、排除 `*.bak*`），把 `"SUPER + SHIFT + I"` 与 `"SHIFT SUPER + I"` 这类不同写法归一化后比对。因此即使在没有图形会话的终端里执行，也能发现 Omarchy 默认绑定。
+
+若发现冲突，脚本会按候选链自动降级，无需手工处理：
+
+| 动作 | 候选链 |
+|---|---|
+| Flash | `SUPER + I` → `SUPER + ALT + I` → `SUPER + ALT + C` |
+| Normal | `SUPER + SHIFT + I` → `SUPER + ALT + SHIFT + I` → `SUPER + ALT + N` |
+| Clip | `CTRL + 1` → `SUPER + ALT + C` → `SUPER + ALT + SHIFT + C` |
+
+想固定某个键位，用环境变量覆盖（冲突时脚本会报错并跳过，不会强行占用）：
+```bash
+HORAE_FLASH_KEY="SUPER + ALT + I" ./scripts/setup-omarchy.sh --shortcuts
+```
 
 ## 3. hyprland.lua 浮动与尺寸规则
 

@@ -61,16 +61,19 @@ bash <skill-dir>/scripts/preflight.sh
 ### 4. 设置 Hyprland 原生快捷键与浮动窗口
 为了保障极致的心流体验，在 `~/.config/hypr/bindings.lua` 与 `~/.config/hypr/hyprland.lua` 中配置三大快捷入口：
 
+> [!IMPORTANT]
+> **写入前必须先做按键冲突检测。** Omarchy 默认把 `SUPER + I` / `SUPER + SHIFT + I` 绑定给输入法切换，直接追加会造成重复绑定。`setup-omarchy.sh` 会扫描运行时绑定表与所有 `*.lua` 配置（自动剥离注释），冲突时按候选链自动降级，并在结束时打印实际生效的键位；也可用 `HORAE_FLASH_KEY` / `HORAE_NORMAL_KEY` / `HORAE_CLIP_KEY` 显式指定。
+
 1. **闪念录入模式（Flash Capture）**：
-   - 快捷键：`SUPER + I`
+   - 首选快捷键：`SUPER + I`（被占用时降级为 `SUPER + ALT + I` → `SUPER + ALT + C`）
    - 触发动作：`{ tui = "horae-flash", focus = true }`
    - 窗口规则：`org.omarchy.horae-flash` 居中浮动（800×600），打完按回车瞬间保存并退出。
 2. **应用一般模式（Normal TUI）**：
-   - 快捷键：`SUPER + SHIFT + I`
+   - 首选快捷键：`SUPER + SHIFT + I`（被占用时降级为 `SUPER + ALT + SHIFT + I` → `SUPER + ALT + N`）
    - 触发动作：`{ tui = "horae-normal", focus = true }`
    - 窗口规则：`org.omarchy.horae` 居中浮动（占屏幕 75% 面积），提供完整的 GTD 交互、周回顾与看板。
 3. **划选与剪贴板录入模式（Clip Capture）**：
-   - 快捷键：`CTRL + 1`
+   - 首选快捷键：`CTRL + 1`（被占用时降级为 `SUPER + ALT + C` → `SUPER + ALT + SHIFT + C`）
    - 触发动作：执行 `~/.local/bin/horae-clip`，优先自动复制鼠标划选文本（或系统剪贴板内容）并写入收件箱，通过 `notify-send` 弹出桌面气泡确认。
 
 配置写入后自动调用 `hyprctl reload` 使其立即生效。详细规则与自定义改键参考 [references/hyprland-bindings.md](references/hyprland-bindings.md)。
