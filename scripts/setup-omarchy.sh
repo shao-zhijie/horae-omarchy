@@ -57,7 +57,7 @@ build_binding_index() {
         [ -d "$dir" ] || continue
         while IFS= read -r file; do
             sed -E 's/--.*$//' "$file" 2>/dev/null \
-                | grep -hoE '(o\.(re)?bind|hl\.bind)\([[:space:]]*"[^"]+"' 2>/dev/null \
+                | grep -hoE '(o\.(re)?bind(_toggle|_hold)?|hl\.bind)\([[:space:]]*"[^"]+"' 2>/dev/null \
                 | sed -E 's/^[a-z_.]+\([[:space:]]*"//; s/"$//' \
                 | while IFS= read -r key; do
                     [ -n "$key" ] && printf '%s\t%s\n' "$(normalize_key "$key")" "$key ($file)"
@@ -260,6 +260,17 @@ setup_hyprland() {
     log "正在扫描现有按键绑定，检查冲突..."
     build_binding_index > "$BINDING_INDEX" 2>/dev/null || true
 
+    # 索引空说明既没读到运行时绑定表，也没读到任何 lua 配置。
+    # 这种情况下"检测不到冲突"并不等于"没有冲突"，继续绑定就有抢占风险，
+    # 所以宁可只配窗口规则，也不动用户现有键位。
+    local INDEX_OK=true
+    if [ ! -s "$BINDING_INDEX" ]; then
+        INDEX_OK=false
+        warn "未能读取任何现有按键绑定（请检查 OMARCHY_PATH 与 ~/.config/hypr）"
+        warn "冲突检测不可用，为避免抢占现有快捷键，本次跳过键位绑定"
+        SKIPPED+=("Hyprland 快捷键（冲突检测不可用）")
+    fi
+
     # 改动任何 hypr 配置前先留一份时间戳备份（SKILL.md 安全红线一）。
     # 按文件去重：bindings.lua 与 hyprland.lua 各自都要有一份。
     ensure_backup() {
@@ -301,7 +312,7 @@ setup_hyprland() {
         NEED_RELOAD=true
     }
 
-    if [ -f "$BINDINGS_LUA" ]; then
+    if [ -f "$BINDINGS_LUA" ] && [ "$INDEX_OK" = true ]; then
         log "正在检查 Hyprland 快捷键配置 ($BINDINGS_LUA)..."
 
         add_binding "$BINDINGS_LUA" "horae-flash" "Flash" "HORAE_FLASH_KEY" \

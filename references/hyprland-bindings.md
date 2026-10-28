@@ -43,6 +43,10 @@ omarchy menu keybindings --print | grep "SUPER + I"
 
 > [!IMPORTANT]
 > `omarchy menu keybindings --print` 需要运行中的 Hyprland 会话。`setup-omarchy.sh` 不依赖它：会同时扫描 `~/.config/hypr/*.lua` 与 `$OMARCHY_PATH/default/hypr/**/*.lua`（剥离 `--` 注释、排除 `*.bak*`），把 `"SUPER + SHIFT + I"` 与 `"SHIFT SUPER + I"` 这类不同写法归一化后比对。因此即使在没有图形会话的终端里执行，也能发现 Omarchy 默认绑定。
+>
+> 扫描覆盖 `o.bind` / `o.rebind` / `o.bind_toggle` / `o.bind_hold` / `hl.bind` 五种写法 —— 只认前两种会漏掉 `SUPER + SHIFT + SPACE`（开关顶栏）、`F9`（按住说话）这类绑定。
+>
+> 若索引为空（既读不到运行时绑定表，也读不到任何 lua 配置），脚本**不会**当作"没有冲突"继续绑定，而是跳过键位配置只写窗口规则 —— 检测不到不等于不存在。
 
 若发现冲突，脚本会按候选链自动降级，无需手工处理：
 
