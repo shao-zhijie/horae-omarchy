@@ -17,6 +17,103 @@ ok()    { printf "${GREEN}[✓]${NC} %s\n" "$*"; }
 warn()  { printf "${YELLOW}[!]${NC} %s\n" "$*"; }
 err()   { printf "${RED}[✗]${NC} %s\n" "$*" >&2; }
 
+BINDING_INDEX="$(mktemp)"
+SKIPPED=()
+trap 'rm -f "$BINDING_INDEX"' EXIT
+
+# 把 "SUPER + SHIFT + I" / "SHIFT ALT + D" 之类的写法归一化成可比较的形式
+# （修饰键按字母序排列、键名放最前），这样不同来源的绑定才能正确比对。
+normalize_key() {
+    printf '%s' "${1:-}" | tr '[:lower:]' '[:upper:]' \
+        | tr '+' ' ' | tr -s ' ' \
+        | awk '{
+            n = NF; if (n == 0) exit
+            key = $n; m = 0
+            for (i = 1; i < n; i++) mods[++m] = $i
+            for (i = 1; i <= m; i++)
+                for (j = i + 1; j <= m; j++)
+                    if (mods[i] > mods[j]) { t = mods[i]; mods[i] = mods[j]; mods[j] = t }
+            out = key
+            for (i = 1; i <= m; i++) out = out "+" mods[i]
+            print out
+        }'
+}
+
+# 汇总当前系统所有按键绑定：运行时绑定表（需 Hyprland 会话）+ 用户配置 + Omarchy 默认配置。
+# 注释行会被剥离，避免把文档里的示例当成真实绑定。
+build_binding_index() {
+    local omarchy_path="${OMARCHY_PATH:-/usr/share/omarchy}"
+    local dir file key desc
+
+    if command -v omarchy >/dev/null 2>&1 && command -v hyprctl >/dev/null 2>&1; then
+        omarchy menu keybindings --print 2>/dev/null \
+            | sed -nE 's/^(.+[^ ]) +→ +(.+)$/\1\t\2/p' \
+            | while IFS=$'\t' read -r key desc; do
+                [ -n "$key" ] && printf '%s\t%s\n' "$(normalize_key "$key")" "$key (运行时)"
+              done
+    fi
+
+    for dir in "$HOME/.config/hypr" "$omarchy_path/default/hypr"; do
+        [ -d "$dir" ] || continue
+        while IFS= read -r file; do
+            sed -E 's/--.*$//' "$file" 2>/dev/null \
+                | grep -hoE '(o\.(re)?bind|hl\.bind)\([[:space:]]*"[^"]+"' 2>/dev/null \
+                | sed -E 's/^[a-z_.]+\([[:space:]]*"//; s/"$//' \
+                | while IFS= read -r key; do
+                    [ -n "$key" ] && printf '%s\t%s\n' "$(normalize_key "$key")" "$key ($file)"
+                  done
+        done < <(find "$dir" -name '*.lua' -type f ! -name '*.bak*' 2>/dev/null)
+    done
+}
+
+# 某个按键若已被占用，打印占用着它的原始写法；未占用则返回非零。
+key_owner() {
+    local want
+    want="$(normalize_key "${1:-}")"
+    [ -n "$want" ] || return 1
+    awk -F'\t' -v w="$want" '$1 == w { print $2; found = 1; exit } END { exit !found }' "$BINDING_INDEX"
+}
+
+# 为一个动作挑选空闲按键。用户显式指定（HORAE_*_KEY）时绝不覆盖冲突；
+# 否则按候选顺序挑第一个没被占用的。全部被占用则返回非零。
+pick_free_key() {
+    local label="$1" env_name="$2" candidate owner
+    shift 2
+
+    local explicit="${!env_name:-}"
+    if [ -n "$explicit" ]; then
+        if owner="$(key_owner "$explicit")"; then
+            err "$label：指定的 $explicit 已被占用（$owner）"
+            warn "请改用其他按键，或先解除该绑定再重跑。" >&2
+            return 1
+        fi
+        printf '%s\n' "$explicit"
+        return 0
+    fi
+
+    for candidate in "$@"; do
+        if ! owner="$(key_owner "$candidate")"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+        # 本函数用 $( ) 取键名，诊断信息必须走 stderr，否则会被当成键名捕获
+        warn "$label：$candidate 已被占用（$owner），改用下一个候选键" >&2
+    done
+
+    err "$label：候选键全部被占用"
+    return 1
+}
+
+backup_file() {
+    local target="$1"
+    [ -f "$target" ] || return 0
+    local stamp backup
+    stamp="$(date +%s)"
+    backup="$target.bak.$stamp"
+    cp -p "$target" "$backup"
+    ok "已备份 $(basename "$target") → $(basename "$backup")"
+}
+
 # 解析命令行参数
 DO_INSTALL_CARGO=false
 DO_INSTALL_NPM=false
@@ -102,16 +199,31 @@ find_horae() {
 }
 
 # 1. 安装/更新 Horae
+# 工具链缺失时只跳过安装这一步，不让 set -e 把后面的配置全部带走。
 if [ "$DO_INSTALL_CARGO" = true ]; then
-    log "正在使用 Cargo 安装 horae..."
-    cargo install horae
-    ok "Cargo 安装完成: $(find_horae)"
+    if command -v cargo >/dev/null 2>&1; then
+        log "正在使用 Cargo 安装 horae..."
+        if cargo install horae; then
+            ok "Cargo 安装完成: $(find_horae)"
+        else
+            err "cargo install horae 失败，跳过安装"
+        fi
+    else
+        err "未找到 cargo，无法使用 --install-cargo（可改用 --install-npm）"
+    fi
 fi
 
 if [ "$DO_INSTALL_NPM" = true ]; then
-    log "正在使用 npm 安装 horae-cli..."
-    npm install -g horae-cli
-    ok "npm 安装完成: $(find_horae)"
+    if command -v npm >/dev/null 2>&1; then
+        log "正在使用 npm 安装 horae-cli..."
+        if npm install -g horae-cli; then
+            ok "npm 安装完成: $(find_horae)"
+        else
+            err "npm install -g horae-cli 失败，跳过安装"
+        fi
+    else
+        err "未找到 npm，无法使用 --install-npm（可改用 --install-cargo）"
+    fi
 fi
 
 HORAE_BIN=$(find_horae)
@@ -136,54 +248,80 @@ setup_hyprland() {
 
     local BINDINGS_LUA="$HOME/.config/hypr/bindings.lua"
     local HYPRLAND_LUA="$HOME/.config/hypr/hyprland.lua"
+    local NEED_RELOAD=false
+    declare -A BACKED_UP_FILES=()
+
+    if [ ! -f "$BINDINGS_LUA" ] && [ ! -f "$HYPRLAND_LUA" ]; then
+        warn "未找到 $BINDINGS_LUA 或 $HYPRLAND_LUA，跳过 Hyprland 集成"
+        return 0
+    fi
+
+    # 建立全系统按键索引（含 Omarchy 默认绑定），用于冲突检测
+    log "正在扫描现有按键绑定，检查冲突..."
+    build_binding_index > "$BINDING_INDEX" 2>/dev/null || true
+
+    # 改动任何 hypr 配置前先留一份时间戳备份（SKILL.md 安全红线一）。
+    # 按文件去重：bindings.lua 与 hyprland.lua 各自都要有一份。
+    ensure_backup() {
+        local target="$1"
+        [ -n "${BACKED_UP_FILES[$target]:-}" ] && return 0
+        backup_file "$target"
+        BACKED_UP_FILES[$target]=1
+    }
+
+    # 追加一条快捷键。键位被占用时不再静默覆盖（SKILL.md 安全红线二），
+    # 而是按候选顺序换用下一个空闲键；用户显式指定的键冲突则直接跳过。
+    add_binding() {
+        local lua_file="$1" marker="$2" label="$3" env_name="$4" dispatcher="$5"
+        shift 5
+        local key
+
+        if grep -q "$marker" "$lua_file"; then
+            ok "${label}快捷键已有配置，跳过重复写入"
+            return 0
+        fi
+
+        if ! key="$(pick_free_key "$label" "$env_name" "$@")"; then
+            warn "${label}快捷键未配置（键位冲突），跳过"
+            SKIPPED+=("$label 快捷键")
+            return 0
+        fi
+
+        ensure_backup "$lua_file"
+        {
+            printf '\n-- Horae: %s\n' "$label"
+            printf 'o.bind("%s", "Horae (%s)", %s)\n' "$key" "$label" "$dispatcher"
+        } >> "$lua_file"
+
+        # 把刚占用的键写回索引，避免同一次运行里后一个动作又选中同一个键
+        printf '%s\t%s\n' "$(normalize_key "$key")" "$key (本次新增)" >> "$BINDING_INDEX"
+
+        ok "${label}快捷键已绑定到 $key"
+        printf -v "${env_name}_USED" '%s' "$key"
+        NEED_RELOAD=true
+    }
 
     if [ -f "$BINDINGS_LUA" ]; then
         log "正在检查 Hyprland 快捷键配置 ($BINDINGS_LUA)..."
-        local NEED_RELOAD=false
 
-        # 检查是否已有 horae-flash 快捷键
-        if ! grep -q "horae-flash" "$BINDINGS_LUA"; then
-            log "添加闪念录入快捷键 (SUPER + I)..."
-            cat >> "$BINDINGS_LUA" << 'EOF'
+        add_binding "$BINDINGS_LUA" "horae-flash" "Flash" "HORAE_FLASH_KEY" \
+            '{ tui = "horae-flash", focus = true }' \
+            "SUPER + I" "SUPER + ALT + I" "SUPER + ALT + C"
 
--- Horae: Flash Capture (闪念录入)
-o.bind("SUPER + I", "Horae (Flash)", { tui = "horae-flash", focus = true })
-EOF
-            NEED_RELOAD=true
-        else
-            ok "闪念录入快捷键已有配置，跳过重复写入"
-        fi
+        add_binding "$BINDINGS_LUA" "horae-normal" "Normal" "HORAE_NORMAL_KEY" \
+            '{ tui = "horae-normal", focus = true }' \
+            "SUPER + SHIFT + I" "SUPER + ALT + SHIFT + I" "SUPER + ALT + N"
 
-        # 检查是否已有 horae-normal 快捷键
-        if ! grep -q "horae-normal" "$BINDINGS_LUA"; then
-            log "添加主应用一般模式快捷键 (SUPER + SHIFT + I)..."
-            cat >> "$BINDINGS_LUA" << 'EOF'
-
--- Horae: Normal Mode (主应用交互)
-o.bind("SUPER + SHIFT + I", "Horae (Normal)", { tui = "horae-normal", focus = true })
-EOF
-            NEED_RELOAD=true
-        else
-            ok "主应用模式快捷键已有配置，跳过重复写入"
-        fi
-
-        # 检查是否已有 horae-clip 快捷键
-        if ! grep -q "horae-clip" "$BINDINGS_LUA"; then
-            log "添加剪贴板快速录入快捷键 (CTRL + 1)..."
-            cat >> "$BINDINGS_LUA" << 'EOF'
-
--- Horae: Clipboard Capture (剪贴板录入)
-o.bind("CTRL + 1", "Horae clip capture", os.getenv("HOME") .. "/.local/bin/horae-clip")
-EOF
-            NEED_RELOAD=true
-        else
-            ok "剪贴板录入快捷键已有配置，跳过重复写入"
-        fi
+        add_binding "$BINDINGS_LUA" "horae-clip" "Clip" "HORAE_CLIP_KEY" \
+            'os.getenv("HOME") .. "/.local/bin/horae-clip"' \
+            "CTRL + 1" "SUPER + ALT + C" "SUPER + ALT + SHIFT + C"
     fi
 
     if [ -f "$HYPRLAND_LUA" ]; then
         log "正在检查 Hyprland 浮动窗口规则 ($HYPRLAND_LUA)..."
-        if ! grep -q "org\.omarchy\.horae-flash" "$HYPRLAND_LUA"; then
+        # 用注释标记判断，避免正则转义层数导致 check 永远不命中、每次重复注入
+        if ! grep -qF "Horae Flash Capture" "$HYPRLAND_LUA"; then
+            ensure_backup "$HYPRLAND_LUA"
             cat >> "$HYPRLAND_LUA" << 'EOF'
 
 -- Horae Flash Capture (居中浮动小窗)
@@ -207,9 +345,12 @@ EOF
         fi
     fi
 
-    if [ "${NEED_RELOAD:-false}" = true ] && command -v hyprctl >/dev/null 2>&1; then
-        hyprctl reload >/dev/null 2>&1 || true
-        ok "Hyprland 配置已即时重载"
+    if [ "$NEED_RELOAD" = true ] && command -v hyprctl >/dev/null 2>&1; then
+        if hyprctl reload >/dev/null 2>&1; then
+            ok "Hyprland 配置已即时重载"
+        else
+            warn "hyprctl reload 失败，请手动检查配置：hyprctl configerrors"
+        fi
     fi
 }
 
@@ -262,35 +403,43 @@ setup_completions() {
     fi
     log "正在生成 Shell 自动补全脚本..."
 
-    # Bash 补全
-    local BASH_COMP_DIR="$HOME/.local/share/bash-completion/completions"
-    mkdir -p "$BASH_COMP_DIR"
-    "$HORAE_BIN" completions bash > "$BASH_COMP_DIR/horae" 2>/dev/null || true
-    ok "Bash 补全已写入 $BASH_COMP_DIR/horae"
+    # 生成失败时不要把空文件留在补全目录里，否则 shell 启动会读到空脚本。
+    gen_completion() {
+        local shell_name="$1" target="$2"
+        local tmp
+        tmp="$(mktemp)"
+        if "$HORAE_BIN" completions "$shell_name" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+            mkdir -p "$(dirname "$target")"
+            mv "$tmp" "$target"
+            ok "${shell_name} 补全已写入 $target"
+        else
+            rm -f "$tmp"
+            warn "${shell_name} 补全生成失败，已跳过（未写入空文件）"
+            SKIPPED+=("$shell_name 补全")
+        fi
+    }
 
-    # Zsh 补全
-    local ZSH_COMP_DIR="$HOME/.local/share/zsh/site-functions"
-    mkdir -p "$ZSH_COMP_DIR"
-    "$HORAE_BIN" completions zsh > "$ZSH_COMP_DIR/_horae" 2>/dev/null || true
-    ok "Zsh 补全已写入 $ZSH_COMP_DIR/_horae"
-
-    # Fish 补全
-    local FISH_COMP_DIR="$HOME/.config/fish/completions"
-    mkdir -p "$FISH_COMP_DIR"
-    "$HORAE_BIN" completions fish > "$FISH_COMP_DIR/horae.fish" 2>/dev/null || true
-    ok "Fish 补全已写入 $FISH_COMP_DIR/horae.fish"
+    gen_completion bash "$HOME/.local/share/bash-completion/completions/horae"
+    gen_completion zsh  "$HOME/.local/share/zsh/site-functions/_horae"
+    gen_completion fish "$HOME/.config/fish/completions/horae.fish"
 }
 
 # 6. 配置 Omarchy 状态栏插件
 setup_bar_widget() {
     local PLUGIN_ID="io.github.zhaohang1205.horae-tasks"
     local TARGET_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
-    local LOCAL_REPO="/home/alex/Projects/horae_for_omarchy_shell"
+    # 仅在参与开发时通过环境变量指向本地 clone，默认走 git 安装
+    local LOCAL_REPO="${HORAE_OMARCHY_SHELL_REPO:-}"
 
     log "正在配置 Omarchy 状态栏组件 ($PLUGIN_ID)..."
     mkdir -p "$HOME/.config/omarchy/plugins"
 
-    if [ -d "$LOCAL_REPO" ]; then
+    if [ -n "$LOCAL_REPO" ]; then
+        if [ ! -d "$LOCAL_REPO" ]; then
+            err "HORAE_OMARCHY_SHELL_REPO 指向的目录不存在: $LOCAL_REPO"
+            SKIPPED+=("状态栏组件")
+            return 0
+        fi
         if [ "$LOCAL_REPO" != "$TARGET_DIR" ]; then
             rm -rf "$TARGET_DIR"
             ln -s "$LOCAL_REPO" "$TARGET_DIR"
@@ -349,8 +498,24 @@ printf "\n${BOLD}${GREEN}========================================${NC}\n"
 printf "${BOLD}${GREEN}   Horae for Omarchy 配置完成！        ${NC}\n"
 printf "${BOLD}${GREEN}========================================${NC}\n"
 printf "体验指南:\n"
-printf "  • 按 ${BOLD}SUPER + I${NC} 呼出闪念录入浮窗（打完回车秒级退出并保存入收件箱）\n"
-printf "  • 按 ${BOLD}SUPER + SHIFT + I${NC} 呼出/聚焦 Horae 全功能 GTD 终端界面\n"
-printf "  • 鼠标划选文本后按 ${BOLD}CTRL + 1${NC} 自动复制并写入待办（伴随桌面提示）\n"
+if [ -n "${HORAE_FLASH_KEY_USED:-}" ]; then
+    printf "  • 按 ${BOLD}%s${NC} 呼出闪念录入浮窗（打完回车秒级退出并保存入收件箱）\n" "$HORAE_FLASH_KEY_USED"
+fi
+if [ -n "${HORAE_NORMAL_KEY_USED:-}" ]; then
+    printf "  • 按 ${BOLD}%s${NC} 呼出/聚焦 Horae 全功能 GTD 终端界面\n" "$HORAE_NORMAL_KEY_USED"
+fi
+if [ -n "${HORAE_CLIP_KEY_USED:-}" ]; then
+    printf "  • 鼠标划选文本后按 ${BOLD}%s${NC} 自动复制并写入待办（伴随桌面提示）\n" "$HORAE_CLIP_KEY_USED"
+fi
 printf "  • 终端中使用 ${BOLD}hc \"任务内容 @tag ~时间\"${NC} 极速录入\n"
-printf "  • 状态栏已展示 Horae 番茄钟环与到期任务卡片（点击可开番茄/选任务）\n\n"
+printf "  • 状态栏已展示 Horae 番茄钟环与到期任务卡片（点击可开番茄/选任务）\n"
+
+if [ "${#SKIPPED[@]}" -gt 0 ]; then
+    printf "\n${YELLOW}以下项目因按键冲突或环境缺失未配置：${NC}\n"
+    for item in "${SKIPPED[@]}"; do
+        printf "  • %s\n" "$item"
+    done
+    printf "可用环境变量指定按键后重跑，例如：\n"
+    printf "  ${BOLD}HORAE_FLASH_KEY=\"SUPER + ALT + I\" %s --shortcuts${NC}\n" "$0"
+fi
+printf "\n"
