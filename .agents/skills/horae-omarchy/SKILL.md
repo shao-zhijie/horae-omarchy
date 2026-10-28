@@ -76,6 +76,9 @@ bash <skill-dir>/scripts/preflight.sh
    - 首选快捷键：`CTRL + 1`（被占用时降级为 `SUPER + ALT + C` → `SUPER + ALT + SHIFT + C`）
    - 触发动作：执行 `~/.local/bin/horae-clip`，优先自动复制鼠标划选文本（或系统剪贴板内容）并写入收件箱，通过 `notify-send` 弹出桌面气泡确认。
 
+> [!NOTE]
+> **语音录入不需要额外脚本。** horae 输入框内按 `Alt+V` / `F8` 即可语音录入（内部走 `pw-record` + `voxtype transcribe`）。系统级的 `F9` 听写转写后也能直接粘进 horae，但依赖两个前提：voxtype 的 `output.paste_keys` 为 `ctrl+shift+v`（终端里 `ctrl+v` 只是字面量 `v`）、默认麦克风未静音。`setup-omarchy.sh --voxtype` 会修正前者，`preflight.sh` 会同时检查这两项。
+
 配置写入后自动调用 `hyprctl reload` 使其立即生效。详细规则与自定义改键参考 [references/hyprland-bindings.md](references/hyprland-bindings.md)。
 
 ### 5. 启用 Omarchy 状态栏番茄钟与任务卡片组件

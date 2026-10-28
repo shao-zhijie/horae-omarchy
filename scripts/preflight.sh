@@ -19,7 +19,7 @@ printf "${BOLD}   Horae for Omarchy 系统环境体检报告   ${NC}\n"
 printf "${BOLD}========================================${NC}\n\n"
 
 # 1. 基础系统与桌面环境
-printf "${BOLD}[1/6] 操作系统与 Omarchy 桌面环境${NC}\n"
+printf "${BOLD}[1/7] 操作系统与 Omarchy 桌面环境${NC}\n"
 if [ -f /etc/arch-release ]; then
     ok "检测到 Arch Linux 基础系统"
 else
@@ -46,7 +46,7 @@ else
 fi
 
 # 2. Horae 二进制状态
-printf "\n${BOLD}[2/6] Horae 核心程序${NC}\n"
+printf "\n${BOLD}[2/7] Horae 核心程序${NC}\n"
 HORAE_BIN=""
 if command -v horae >/dev/null 2>&1; then
     HORAE_BIN=$(command -v horae)
@@ -83,7 +83,7 @@ else
 fi
 
 # 3. Omarchy 状态栏插件 (horae_for_omarchy_shell)
-printf "\n${BOLD}[3/6] Omarchy 状态栏组件 (Quickshell)${NC}\n"
+printf "\n${BOLD}[3/7] Omarchy 状态栏组件 (Quickshell)${NC}\n"
 PLUGIN_ID="io.github.zhaohang1205.horae-tasks"
 PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
 
@@ -99,7 +99,7 @@ else
 fi
 
 # 4. Hyprland 快捷键与窗口规则
-printf "\n${BOLD}[4/6] Hyprland 快捷键与浮动窗口${NC}\n"
+printf "\n${BOLD}[4/7] Hyprland 快捷键与浮动窗口${NC}\n"
 BINDINGS_LUA="$HOME/.config/hypr/bindings.lua"
 HYPRLAND_LUA="$HOME/.config/hypr/hyprland.lua"
 
@@ -134,7 +134,7 @@ if [ -f "$HYPRLAND_LUA" ]; then
 fi
 
 # 5. Shell 别名 (Alias)
-printf "\n${BOLD}[5/6] Shell 别名与快捷指令${NC}\n"
+printf "\n${BOLD}[5/7] Shell 别名与快捷指令${NC}\n"
 CHECK_FILES=()
 [ -f "$HOME/.zshrc" ] && CHECK_FILES+=("$HOME/.zshrc")
 [ -f "$HOME/.bashrc" ] && CHECK_FILES+=("$HOME/.bashrc")
@@ -163,7 +163,7 @@ else
 fi
 
 # 6. 辅助工具与通知
-printf "\n${BOLD}[6/6] 桌面集成与增强${NC}\n"
+printf "\n${BOLD}[6/7] 桌面集成与增强${NC}\n"
 if command -v notify-send >/dev/null 2>&1; then
     ok "桌面通知工具 notify-send 就绪"
 else
@@ -174,6 +174,71 @@ if command -v voxtype >/dev/null 2>&1; then
     ok "Voxtype 离线语音模型已安装（支持语音快速转写录入待办）"
 else
     info "Voxtype 未安装（可选：用于语音待办捕获）"
+fi
+
+# 7. 语音录入与剪贴板
+printf "\n${BOLD}[7/7] 语音录入链路${NC}\n"
+
+if command -v voxtype >/dev/null 2>&1; then
+    ok "voxtype 已安装（horae 内置语音与系统级 F9 听写都用它转写）"
+
+    # 终端里 ctrl+v 不是粘贴，而是字面量 v。horae 的输入框靠 bracketed paste
+    # 接收文本，粘贴键不对就只会在输入框里看到一个字母 v。
+    paste_keys="$(voxtype config get output.paste_keys 2>/dev/null | tr -d '"' | tr -d '\r')"
+    if [ "$paste_keys" = "ctrl+shift+v" ] || [ "$paste_keys" = "shift+insert" ]; then
+        ok "voxtype 粘贴键: $paste_keys"
+    else
+        warn "voxtype 粘贴键是 '$paste_keys'，终端里建议改成 ctrl+shift+v"
+        warn "  否则语音转写后只会在输入框里看到一个字母 v"
+        warn "  修复: voxtype config set output.paste_keys ctrl+shift+v && systemctl --user restart voxtype.service"
+    fi
+
+    # voxtype 自带的 evdev 全局热键与合成器绑定同时存在时，一次按键会有
+    # 两条触发路径，第二次 start 会被 daemon 以 "daemon is Recording" 挡掉。
+    hotkey_enabled="$(voxtype config get hotkey.enabled 2>/dev/null | tr -d '"' | tr -d '\r')"
+    hotkey_key="$(voxtype config get hotkey.key 2>/dev/null | tr -d '"' | tr -d '\r')"
+    if [ "$hotkey_enabled" = "true" ]; then
+        info "voxtype evdev 全局热键已开启（$hotkey_key）—— 若同时用 Hyprland 绑定调用"
+        info "  voxtype record，两条触发路径可能互相打架；二者选一即可"
+    fi
+else
+    info "未安装 voxtype（horae 内置语音 Alt+V/F8 需要它，npm i -g horae-cli 不含它）"
+fi
+
+# 麦克风静音时录音只会录到静音，ASR 会把它幻听成几句无关的字
+if command -v pactl >/dev/null 2>&1; then
+    default_source="$(pactl get-default-source 2>/dev/null)"
+    if [ -n "$default_source" ]; then
+        source_name="${default_source##*.}"
+        if pactl get-source-mute "$default_source" 2>/dev/null | grep -qi "yes"; then
+            err "默认麦克风 ($source_name) 处于静音状态 —— 语音录入会录到一片静音"
+            warn "  解除静音: pactl set-source-mute \"$(pactl get-default-source)\" 0"
+            warn "  或点状态栏的麦克风图标 / 按键盘上的麦克风静音键"
+        else
+            ok "默认麦克风: $source_name（未静音）"
+        fi
+    fi
+elif command -v wpctl >/dev/null 2>&1; then
+    if wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null | grep -q MUTED; then
+        err "默认麦克风处于静音状态 —— 语音录入会录到一片静音"
+        warn "  解除静音: wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0"
+    else
+        ok "默认麦克风未静音"
+    fi
+fi
+
+if command -v pw-record >/dev/null 2>&1; then
+    ok "pw-record 就绪（horae 内置语音 Alt+V/F8 用它录音）"
+elif command -v arecord >/dev/null 2>&1; then
+    ok "arecord 就绪（horae 内置语音的降级录音工具）"
+else
+    warn "既无 pw-record 也无 arecord，horae 的 Alt+V/F8 内置语音无法录音"
+fi
+
+if command -v wl-copy >/dev/null 2>&1; then
+    ok "wl-copy/wl-paste 就绪（Wayland 剪贴板，划选捕获依赖它）"
+else
+    warn "未找到 wl-copy，划选捕获与剪贴板录入将不可用"
 fi
 
 printf "\n${BOLD}========================================${NC}\n"

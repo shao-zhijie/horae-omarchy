@@ -122,6 +122,7 @@ DO_SHORTCUTS=false
 DO_BAR=false
 DO_COMPLETIONS=false
 DO_DESKTOP=false
+DO_VOXTYPE=false
 
 if [ $# -eq 0 ]; then
     DO_ALIASES=true
@@ -129,6 +130,7 @@ if [ $# -eq 0 ]; then
     DO_BAR=true
     DO_COMPLETIONS=true
     DO_DESKTOP=true
+    DO_VOXTYPE=true
 fi
 
 while [ $# -gt 0 ]; do
@@ -139,6 +141,7 @@ while [ $# -gt 0 ]; do
             DO_BAR=true
             DO_COMPLETIONS=true
             DO_DESKTOP=true
+            DO_VOXTYPE=true
             ;;
         --install-cargo)
             DO_INSTALL_CARGO=true
@@ -161,6 +164,9 @@ while [ $# -gt 0 ]; do
         --desktop)
             DO_DESKTOP=true
             ;;
+        --voxtype)
+            DO_VOXTYPE=true
+            ;;
         -h|--help)
             echo "用法: $0 [选项]"
             echo "选项:"
@@ -172,6 +178,7 @@ while [ $# -gt 0 ]; do
             echo "  --bar             安装并启用 Omarchy 状态栏组件 (io.github.zhaohang1205.horae-tasks)"
             echo "  --completions     安装 shell 自动补全 (bash, zsh, fish)"
             echo "  --desktop         安装 desktop 应用菜单图标"
+            echo "  --voxtype         把 voxtype 粘贴键设为 ctrl+shift+v（终端粘贴语音文本）"
             exit 0
             ;;
         *)
@@ -476,6 +483,62 @@ setup_bar_widget() {
     fi
 }
 
+# 8. 配置 voxtype 的粘贴键
+# 终端里 ctrl+v 不是粘贴（那是字面量 v），foot/ghostty 用的是 ctrl+shift+v。
+# horae 的输入框靠 bracketed paste 接收文本，粘贴键不对就录不进待办。
+setup_voxtype() {
+    if ! command -v voxtype >/dev/null 2>&1; then
+        info "未安装 voxtype，跳过语音粘贴键配置"
+        return 0
+    fi
+
+    # voxtype 用 getpwuid 拿真实家目录，不认被覆盖的 $HOME，所以备份也要跟着走。
+    local voxtype_home voxtype_config
+    voxtype_home="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+    voxtype_home="${voxtype_home:-$HOME}"
+    voxtype_config="${XDG_CONFIG_HOME:-$voxtype_home/.config}/voxtype/config.toml"
+
+    local current
+    current="$(voxtype config get output.paste_keys 2>/dev/null | tr -d '"' | tr -d '\r')"
+    if [ "$current" = "ctrl+shift+v" ] || [ "$current" = "shift+insert" ]; then
+        ok "voxtype 粘贴键已是 $current"
+    else
+        if [ -f "$voxtype_config" ]; then
+            backup_file "$voxtype_config"
+        fi
+
+        log "正在把 voxtype 粘贴键设为 ctrl+shift+v（终端里 ctrl+v 只是字面量 v）..."
+        if voxtype config set output.paste_keys ctrl+shift+v >/dev/null 2>&1; then
+            ok "voxtype 粘贴键已设为 ctrl+shift+v"
+        else
+            err "设置 voxtype 粘贴键失败"
+            SKIPPED+=("voxtype 粘贴键")
+        fi
+    fi
+
+    # voxtype 自带 evdev 全局热键（默认 ScrollLock）。若同时用合成器绑定调用
+    # `voxtype record start/stop`，一次按键会有两条触发路径，第二次 start 会被
+    # daemon 以 "daemon is Recording" 挡掉，录音时长也会对不上。
+    local hotkey_enabled
+    hotkey_enabled="$(voxtype config get hotkey.enabled 2>/dev/null | tr -d '"' | tr -d '\r')"
+    if [ "$hotkey_enabled" = "true" ]; then
+        local hotkey_key
+        hotkey_key="$(voxtype config get hotkey.key 2>/dev/null | tr -d '"' | tr -d '\r')"
+        warn "voxtype 自带的 evdev 全局热键仍开启（$hotkey_key）"
+        warn "  若你用合成器快捷键调用 voxtype record，请关闭它以免两条触发路径打架："
+        warn "    voxtype config set hotkey.enabled false && systemctl --user restart voxtype.service"
+    fi
+
+    # output.* 与 hotkey.* 都是 daemon 启动时读取的项，改完必须重启才生效
+    if systemctl --user is-active --quiet voxtype.service 2>/dev/null; then
+        if systemctl --user restart voxtype.service >/dev/null 2>&1; then
+            ok "voxtype daemon 已重启以应用新配置"
+        else
+            warn "voxtype daemon 重启失败，请手动执行：systemctl --user restart voxtype.service"
+        fi
+    fi
+}
+
 # 7. 安装 Desktop 菜单图标
 setup_desktop_entry() {
     log "正在生成桌面应用启动器 (Desktop Entry)..."
@@ -504,6 +567,7 @@ EOF
 [ "$DO_COMPLETIONS" = true ] && setup_completions
 [ "$DO_BAR" = true ] && setup_bar_widget
 [ "$DO_DESKTOP" = true ] && setup_desktop_entry
+[ "$DO_VOXTYPE" = true ] && setup_voxtype
 
 printf "\n${BOLD}${GREEN}========================================${NC}\n"
 printf "${BOLD}${GREEN}   Horae for Omarchy 配置完成！        ${NC}\n"
