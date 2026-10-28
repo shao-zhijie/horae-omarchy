@@ -1,52 +1,68 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-# 1. 先将预先选好的内容复制到系统剪贴板 (Wayland primary selection -> clipboard)
-# 在 Linux / Wayland (Hyprland) 环境下，鼠标选中的文本自动进入 primary selection
-primary=$(wl-paste --primary --no-newline 2>/dev/null || true)
+# 桌面通知：正文截断，避免把整段长文本糊到气泡里
+notify() {
+    local urgency="$1" title="$2" body="$3" icon="${4:-dialog-information}"
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -a "Horae" -u "$urgency" -i "$icon" "$title" "${body:0:300}"
+    else
+        printf '%s: %s\n' "$title" "$body" >&2
+    fi
+}
+
+clipboard_get() { wl-paste --no-newline 2>/dev/null || true; }
+
+# 1. 把鼠标划选内容 (Wayland primary selection) 搬到主剪贴板
+primary="$(wl-paste --primary --no-newline 2>/dev/null || true)"
 
 if [ -n "$primary" ]; then
-    printf "%s" "$primary" | wl-copy
+    printf '%s' "$primary" | wl-copy
+    # wl-copy 会 fork 到后台，立刻读取有可能拿到上一次的旧剪贴板，
+    # 那样会静默录入错误内容。这里轮询确认剪贴板真的换了。
+    for _ in $(seq 1 25); do
+        [ "$(clipboard_get)" = "$primary" ] && break
+        sleep 0.02
+    done
 else
-    # 若 primary 为空，对于非终端窗口尝试通过 wtype 发送 Ctrl+C 作为保底（避免终端收到 SIGINT）
-    active_class=$(hyprctl activewindow -j 2>/dev/null | grep -o '"class": "[^"]*"' | cut -d'"' -f4 || true)
+    # 没有划选区时，给前台窗口补发一次 Ctrl+C。
+    # 终端里绝不发：那是 SIGINT，会打断用户正在跑的命令。
+    active_class="$(hyprctl activewindow -j 2>/dev/null \
+        | sed -n 's/.*"class": *"\([^"]*\)".*/\1/p' | tr '[:upper:]' '[:lower:]' || true)"
     case "$active_class" in
-        kitty|alacritty|foot|ghostty|org.wezfurlong.wezterm)
+        ""|*kitty*|*alacritty*|*foot*|*ghostty*|*wezterm*|*konsole*|*ptyxis*|*console*|*urxvt*|*termite*|*tabby*)
             ;;
         *)
             if command -v wtype >/dev/null 2>&1; then
+                before="$(clipboard_get)"
                 wtype -M ctrl -k c -m ctrl 2>/dev/null || true
-                sleep 0.05
+                # 等应用真正把选中内容写进剪贴板，而不是固定 sleep
+                for _ in $(seq 1 40); do
+                    [ "$(clipboard_get)" != "$before" ] && break
+                    sleep 0.025
+                done
             fi
             ;;
     esac
 fi
 
-# 检查当前剪贴板是否有内容
-clip_content=$(wl-paste --no-newline 2>/dev/null || true)
-if [ -z "$clip_content" ]; then
-    if command -v notify-send >/dev/null 2>&1; then
-        notify-send -a "Horae" -u low -i dialog-information "Horae 提示" "未检测到选中文本且剪贴板为空"
-    else
-        echo "未检测到选中文本且剪贴板为空" >&2
-    fi
+# 2. 剪贴板为空则直接返回，不创建空任务
+if [ -z "$(clipboard_get)" ]; then
+    notify low "Horae 提示" "未检测到选中文本且剪贴板为空"
     exit 0
 fi
 
-# 2. 执行 horae capture --clip 并发送桌面通知
+# 3. 执行 horae capture --clip 并发送桌面通知
 HORAE_BIN="${HORAE_BIN:-$(command -v horae || echo "$HOME/.cargo/bin/horae")}"
 
-if msg=$("$HORAE_BIN" capture --clip "$@" 2>&1); then
-    if command -v notify-send >/dev/null 2>&1; then
-        notify-send -a "Horae" -i checkbox-checked-symbolic "Horae 剪贴板捕获" "$msg"
-    else
-        echo "$msg"
-    fi
+# stderr 单独收集：只放进失败通知，不混进成功提示的正文
+err_log="$(mktemp)"
+if msg="$("$HORAE_BIN" capture --clip "$@" 2>"$err_log")"; then
+    rm -f "$err_log"
+    notify normal "Horae 剪贴板捕获" "${msg:-已录入收件箱}" checkbox-checked-symbolic
 else
-    if command -v notify-send >/dev/null 2>&1; then
-        notify-send -a "Horae" -u critical "Horae 剪贴板捕获失败" "$msg"
-    else
-        echo "$msg" >&2
-    fi
+    detail="$(cat "$err_log" 2>/dev/null)"
+    rm -f "$err_log"
+    notify critical "Horae 剪贴板捕获失败" "${detail:-$msg}"
     exit 1
 fi
