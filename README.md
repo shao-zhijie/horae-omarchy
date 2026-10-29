@@ -15,6 +15,7 @@
 - 📋 **划选/剪贴板一键录入（Clip Capture）**：用鼠标划选目标文本后按下 `CTRL + 1`，自动完成复制并录入收件箱，伴随系统桌面气泡通知（`notify-send`）。
 - 🍅 **Quattro 状态栏深度联动**：一键激活 [`horae_for_omarchy_shell`](https://github.com/zhaohang1205/horae_for_omarchy_shell) 顶部状态栏组件，内嵌动态番茄钟圆环（`PomoRing`）、到期任务卡片、隐私防窥模式（`󰈈`/`󰈉`）与悬停跑马灯。
 - ⌨️ **零冲突 Shell 别名与补全**：自动配置 `hc`（快速捕获）与 `hcc`（剪贴板捕获），并注入 Bash / Zsh / Fish 全套自动补全。
+- 🎙️ **语音直达待办**：horae 输入框内按 `Alt+V` / `F8` 即可说话入库（内部 `pw-record` + `voxtype` 转写）；系统级 `F9` 听写转写后也能直接粘进闪念窗。
 - 🎨 **主题自动感应**：自动匹配 Omarchy 23 款官方主题（Catppuccin, Tokyo Night, Gruvbox 等），开箱即契合全局视觉。
 
 ---
@@ -116,7 +117,21 @@ ln -sfn ~/.agents ~/.agent
 | `SUPER + I` | 闪念录入 (Flash) | 居中浮窗，输入回车即保存收件箱并秒级退出 |
 | `SUPER + SHIFT + I` | 应用交互 (Normal) | 居中 75% 浮窗，呼出或聚焦 Horae TUI |
 | `CTRL + 1` | 划选/剪贴板录入 (Clip) | 划选文本自动复制入库 + 桌面通知提示 |
-| `SUPER + ALT + V` | （可选）语音录入 | 联动 Omarchy 自带 Voxtype 离线语音转写 |
+| `Alt+V` / `F8` | 语音录入（horae 内置） | 在 horae 输入框内按住说话，文本直接落进输入框 |
+
+> [!IMPORTANT]
+> **上表是首选键位，不是写死的键位。** Omarchy 默认把 `SUPER + I` 和 `SUPER + SHIFT + I` 绑给了输入法切换（`omarchy-input-method cycle` / `cycle back`），所以在原生 Omarchy 上这两个键通常已被占用。
+>
+> 配置脚本会在写入前扫描全系统按键（运行时绑定表 + `~/.config/hypr` + Omarchy 默认配置），一旦发现冲突就**自动改用下一个空闲候选键并在结尾报告实际使用的键位**，绝不静默覆盖已有绑定。
+>
+> 你也可以显式指定：
+> ```bash
+> HORAE_FLASH_KEY="SUPER + ALT + I" \
+> HORAE_NORMAL_KEY="SUPER + ALT + SHIFT + I" \
+> HORAE_CLIP_KEY="CTRL + 1" \
+> ./scripts/setup-omarchy.sh --shortcuts
+> ```
+> 显式指定的键若已被占用，脚本会报错并跳过该项，而不是强行占用。
 
 > 快捷键定义于 `~/.config/hypr/bindings.lua`，窗口规则定义于 `~/.config/hypr/hyprland.lua`。详情参见 [references/hyprland-bindings.md](references/hyprland-bindings.md)。
 
